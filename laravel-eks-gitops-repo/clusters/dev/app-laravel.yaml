@@ -1,0 +1,52 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: laravel-dev
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: laravel-platform
+  source:
+    repoURL: https://github.com/tconuorah/laravel-eks-deploy-gitops.git
+    targetRevision: dev # gitops-source-revision
+    path: laravel-helm
+    helm:
+      releaseName: laravel
+      values: |
+        fullnameOverride: laravel
+        image:
+          nginx:
+            repository: 022440376442.dkr.ecr.us-east-2.amazonaws.com/nginx
+            tag: "dev" # gitops-nginx-tag
+            pullPolicy: IfNotPresent
+          php:
+            repository: 022440376442.dkr.ecr.us-east-2.amazonaws.com/php
+            tag: "dev" # gitops-php-tag
+            pullPolicy: IfNotPresent
+        ingress:
+          enabled: true
+          className: alb
+          targetType: ip
+          scheme: internet-facing
+          certificateArn: ""
+          sslRedirect: false
+          hosts:
+            - host: laravel-dev.example.com
+              paths:
+                - path: /
+                  pathType: Prefix
+        app:
+          url: https://laravel-dev.example.com
+        secret:
+          create: false
+          existingSecret: laravel-env
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: laravel
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
