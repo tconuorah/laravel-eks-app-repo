@@ -244,6 +244,37 @@ You can also use any tag you want:
 TAG=1.0.1 ./scripts/push-ecr-images.sh
 ```
 
+## GitHub Actions ECR Role
+
+Terraform now includes a reusable IAM module at:
+
+```text
+terraform/modules/iam-github-ecr-push
+```
+
+The `dev` environment creates a GitHub OIDC role that can push to every ECR repository created by `var.ecr_repositories`.
+
+Apply Terraform and copy the role ARN:
+
+```bash
+cd terraform/envs/dev
+terraform output -raw github_ecr_push_role_arn
+```
+
+Set these GitHub repository variables before using the workflow:
+
+- `AWS_GITHUB_ACTIONS_ROLE_ARN`
+- `AWS_REGION` (optional, defaults to `us-east-2`)
+- `ECR_PHP_REPOSITORY` (optional, defaults to `php`)
+- `ECR_NGINX_REPOSITORY` (optional, defaults to `nginx`)
+
+By default the role trusts the `tconuorah/laravel-eks-deploy-gitops` repository on `refs/heads/dev`. Update `github_repository` or `github_allowed_refs` in `terraform/envs/dev/variables.tf` if your repo or branch changes.
+
+If your AWS account already has the GitHub OIDC provider, set:
+
+- `create_github_oidc_provider = false`
+- `github_oidc_provider_arn = "arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com"`
+
 ## Deploy with Helm
 
 Deploy or upgrade the application:

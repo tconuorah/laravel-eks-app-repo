@@ -9,6 +9,19 @@ output "ecr_repository_names" {
     for key, repository in module.ecr : key => repository.repository_name
   }
 }
+
+output "github_ecr_push_role_arn" {
+  value = module.github_ecr_push_role.role_arn
+}
+
+output "github_oidc_provider_arn" {
+  value = module.github_ecr_push_role.oidc_provider_arn
+}
+
+output "github_ecr_push_allowed_subjects" {
+  value = module.github_ecr_push_role.allowed_subjects
+}
+
 output "cluster_name" {
   value = module.eks.cluster_name
 }

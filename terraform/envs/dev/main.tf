@@ -16,6 +16,18 @@ module "ecr" {
   tags   = local.tags
 }
 
+module "github_ecr_push_role" {
+  source = "../../modules/iam-github-ecr-push"
+
+  role_name            = "${local.name}-github-ecr-push"
+  github_repositories  = [var.github_repository]
+  github_refs          = var.github_allowed_refs
+  ecr_repository_arns  = [for repository in values(module.ecr) : repository.repository_arn]
+  create_oidc_provider = var.create_github_oidc_provider
+  oidc_provider_arn    = var.github_oidc_provider_arn
+  tags                 = local.tags
+}
+
 module "vpc" {
   source = "../../modules/vpc"
 

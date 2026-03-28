@@ -6,6 +6,31 @@ variable "ecr_repositories" {
     php   = "php"
   }
 }
+
+variable "github_repository" {
+  description = "GitHub repository allowed to assume the ECR push role, in owner/repo format"
+  type        = string
+  default     = "tconuorah/laravel-eks-deploy-gitops"
+}
+
+variable "github_allowed_refs" {
+  description = "Git refs GitHub Actions can use to assume the ECR push role"
+  type        = list(string)
+  default     = ["refs/heads/dev"]
+}
+
+variable "create_github_oidc_provider" {
+  description = "Whether Terraform should create the GitHub Actions OIDC provider in AWS"
+  type        = bool
+  default     = true
+}
+
+variable "github_oidc_provider_arn" {
+  description = "Existing GitHub Actions OIDC provider ARN to reuse when create_github_oidc_provider is false"
+  type        = string
+  default     = null
+}
+
 variable "aws_region" {
   type    = string
   default = "us-east-2"
