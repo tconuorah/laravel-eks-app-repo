@@ -1,4 +1,4 @@
-name: ci
+name: ci-nginx-php
 
 on:
   push:
