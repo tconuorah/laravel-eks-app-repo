@@ -21,6 +21,12 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
+      - name: Derive image tag from triggering commit
+        id: image-tag
+        run: echo "value=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+
       - name: Resolve GitOps repo settings
         id: gitops-repo
         run: |
@@ -56,8 +62,8 @@ jobs:
           python3 scripts/update_argocd_application.py \
             --file gitops-repo/clusters/dev/app-laravel.yaml \
             --revision "${{ github.event.workflow_run.head_sha }}" \
-            --nginx-tag "${{ github.event.workflow_run.head_sha }}" \
-            --php-tag "${{ github.event.workflow_run.head_sha }}"
+            --nginx-tag "${{ steps.image-tag.outputs.value }}" \
+            --php-tag "${{ steps.image-tag.outputs.value }}"
 
       - name: Commit and push GitOps promotion branch
         id: commit-gitops

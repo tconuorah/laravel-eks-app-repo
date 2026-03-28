@@ -267,7 +267,7 @@ kubectl apply -n argocd -f laravel-eks-gitops-repo/bootstrap/root-application.ya
 
 The workflow:
 
-- `.github/workflows/ci.yml` builds and pushes the `php` and `nginx` images to ECR using the commit SHA as an immutable tag
+- `.github/workflows/ci.yml` builds and pushes the `php` and `nginx` images to ECR using the first 12 characters of the git commit SHA as an immutable tag
 - `.github/workflows/promote-gitops-dev.yml` updates `clusters/dev/app-laravel.yaml` in a GitOps repo branch and opens a PR after a successful `ci` run on `dev`
 
 For GitOps promotion with a GitHub App, create and install a GitHub App on `laravel-eks-gitops-repo`, then set these GitHub Actions settings in this source repo:
