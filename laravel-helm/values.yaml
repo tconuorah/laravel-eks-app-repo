@@ -1,0 +1,140 @@
+replicaCount: 1
+
+image:
+  nginx:
+    repository: 022440376442.dkr.ecr.us-east-2.amazonaws.com/nginx
+    tag: "20260314-211023"
+    pullPolicy: IfNotPresent
+  php:
+    repository: 022440376442.dkr.ecr.us-east-2.amazonaws.com/php
+    tag: "20260314-211023"
+    pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: "laravel"
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: http
+
+ingress:
+  enabled: true
+  className: alb
+  annotations: {}
+  targetType: ip
+  hosts:
+    - host: ""
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  scheme: internet-facing
+  certificateArn: ""
+  sslRedirect: false
+
+app:
+  name: Laravel
+  env: production
+  debug: "false"
+  url: "http://localhost"
+  key: ""
+  dbConnection: mysql
+  dbHost: ""
+  dbPort: "3306"
+  dbName: laravel
+  dbUser: root
+  dbPassword: ""
+  mysqlAttrSslCa: ""
+  extraEnv: {}
+
+secret:
+  create: true
+  existingSecret: ""
+  name: ""
+  annotations: {}
+  stringData: {}
+
+httpRoute:
+  enabled: false
+  annotations: {}
+  parentRefs:
+    - name: gateway
+      sectionName: http
+  hostnames:
+    - chart-example.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+
+nginx:
+  containerPort: 8080
+  serverName: _
+  documentRoot: /var/www/html/public
+  clientMaxBodySize: 20m
+  fastcgiReadTimeout: 60s
+  extraServerBlock: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+  volumeMounts: []
+
+php:
+  fpmPort: 9000
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  volumeMounts: []
+
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+
+volumes: []
+
+volumeMounts: []
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+pdb:
+  enabled: true
+  minAvailable: 1

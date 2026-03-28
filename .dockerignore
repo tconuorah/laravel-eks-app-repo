@@ -1,0 +1,12 @@
+.git
+.DS_Store
+terraform/
+laravel-helm/
+*.tfstate
+*.tfstate.backup
+**/.terraform/
+app/.git/
+app/.env
+app/node_modules/
+app/vendor/
+app/storage/logs/*.log

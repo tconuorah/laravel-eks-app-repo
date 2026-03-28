@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "laravel.nginxConfigMapName" . }}
+  labels:
+    {{- include "laravel.labels" . | nindent 4 }}
+data:
+  default.conf: |
+    server {
+        listen {{ .Values.nginx.containerPort }};
+        server_name {{ .Values.nginx.serverName }};
+        root {{ .Values.nginx.documentRoot }};
+        index index.php index.html;
+        charset utf-8;
+        client_max_body_size {{ .Values.nginx.clientMaxBodySize }};
+
+        location / {
+            try_files $uri $uri/ /index.php?$query_string;
+        }
+
+        location = /favicon.ico {
+            access_log off;
+            log_not_found off;
+        }
+
+        location = /robots.txt {
+            access_log off;
+            log_not_found off;
+        }
+
+        error_page 404 /index.php;
+
+        location ~ \.php$ {
+            fastcgi_pass 127.0.0.1:{{ .Values.php.fpmPort }};
+            fastcgi_index index.php;
+            include fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+            fastcgi_param DOCUMENT_ROOT $realpath_root;
+            fastcgi_read_timeout {{ .Values.nginx.fastcgiReadTimeout }};
+        }
+
+        location ~ /\.(?!well-known).* {
+            deny all;
+        }
+{{- with .Values.nginx.extraServerBlock }}
+{{ . | nindent 8 }}
+{{- end }}
+    }
