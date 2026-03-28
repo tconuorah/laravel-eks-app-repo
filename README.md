@@ -268,7 +268,20 @@ kubectl apply -n argocd -f laravel-eks-gitops-repo/bootstrap/root-application.ya
 The workflow:
 
 - `.github/workflows/ci.yml` builds and pushes the `php` and `nginx` images to ECR using the commit SHA as an immutable tag
-- `.github/workflows/promote-gitops-dev.yml` updates `clusters/dev/app-laravel.yaml` in the GitOps repo after a successful `ci` run on `dev`
+- `.github/workflows/promote-gitops-dev.yml` updates `clusters/dev/app-laravel.yaml` in a GitOps repo branch and opens a PR after a successful `ci` run on `dev`
+
+For GitOps promotion with a GitHub App, create and install a GitHub App on `laravel-eks-gitops-repo`, then set these GitHub Actions settings in this source repo:
+
+- Variable: `GITOPS_APP_ID`
+- Variable: `GITOPS_REPO_FULL_NAME` (example: `tconuorah/laravel-eks-gitops-repo`)
+- Variable: `GITOPS_REPO_DEFAULT_BRANCH` (optional, defaults to `main`)
+- Secret: `GITOPS_APP_PRIVATE_KEY`
+
+The GitHub App should have:
+
+- Repository permissions: `Contents` = `Read and write`
+- Repository permissions: `Pull requests` = `Read and write`
+- Installation target: the `laravel-eks-gitops-repo` repository
 
 The Laravel workload reads secrets from AWS Secrets Manager through:
 
@@ -300,7 +313,7 @@ Set these GitHub repository variables before using the workflow:
 - `ECR_PHP_REPOSITORY` (optional, defaults to `php`)
 - `ECR_NGINX_REPOSITORY` (optional, defaults to `nginx`)
 
-By default the role trusts the `tconuorah/laravel-eks-deploy-gitops` repository on `refs/heads/dev`. Update `github_repository` or `github_allowed_refs` in `terraform/envs/dev/variables.tf` if your repo or branch changes.
+By default the role trusts the `tconuorah/laravel-eks-app-repo` repository on `refs/heads/dev`. Update `github_repository` or `github_allowed_refs` in `terraform/envs/dev/variables.tf` if your repo or branch changes.
 
 If your AWS account already has the GitHub OIDC provider, set:
 

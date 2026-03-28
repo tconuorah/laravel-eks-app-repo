@@ -21,12 +21,34 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
+      - name: Resolve GitOps repo settings
+        id: gitops-repo
+        run: |
+          full_name="${{ vars.GITOPS_REPO_FULL_NAME || 'tconuorah/laravel-eks-gitops-repo' }}"
+          owner="${full_name%%/*}"
+          repo="${full_name#*/}"
+          branch="${{ vars.GITOPS_REPO_DEFAULT_BRANCH || 'main' }}"
+
+          echo "full_name=$full_name" >> "$GITHUB_OUTPUT"
+          echo "owner=$owner" >> "$GITHUB_OUTPUT"
+          echo "repo=$repo" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+          owner: ${{ steps.gitops-repo.outputs.owner }}
+          repositories: ${{ steps.gitops-repo.outputs.repo }}
+
       - name: Check out GitOps repo
         uses: actions/checkout@v4
         with:
-          repository: ${{ vars.GITOPS_REPO_FULL_NAME || 'tconuorah/laravel-eks-gitops-repo' }}
-          ref: ${{ vars.GITOPS_REPO_DEFAULT_BRANCH || 'main' }}
-          token: ${{ secrets.GITOPS_REPO_TOKEN }}
+          repository: ${{ steps.gitops-repo.outputs.full_name }}
+          ref: ${{ steps.gitops-repo.outputs.branch }}
+          token: ${{ steps.app-token.outputs.token }}
           path: gitops-repo
 
       - name: Update Argo CD application manifest
@@ -37,17 +59,58 @@ jobs:
             --nginx-tag "${{ github.event.workflow_run.head_sha }}" \
             --php-tag "${{ github.event.workflow_run.head_sha }}"
 
-      - name: Commit and push GitOps change
+      - name: Commit and push GitOps promotion branch
+        id: commit-gitops
         working-directory: gitops-repo
+        env:
+          PROMOTION_BRANCH: promote/dev-${{ github.event.workflow_run.head_sha }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "gitops-promoter[bot]"
+          git config user.email "gitops-promoter[bot]@users.noreply.github.com"
 
           if git diff --quiet; then
             echo "No GitOps changes detected"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
+          git checkout -B "$PROMOTION_BRANCH"
           git add clusters/dev/app-laravel.yaml
           git commit -m "Promote dev to ${{ github.event.workflow_run.head_sha }}"
-          git push origin HEAD
+          git push --force-with-lease origin "$PROMOTION_BRANCH"
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "branch=$PROMOTION_BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitOps pull request
+        if: steps.commit-gitops.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITOPS_REPO: ${{ steps.gitops-repo.outputs.full_name }}
+          BASE_BRANCH: ${{ steps.gitops-repo.outputs.branch }}
+          HEAD_BRANCH: ${{ steps.commit-gitops.outputs.branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          existing_pr_number="$(gh pr list \
+            --repo "$GITOPS_REPO" \
+            --base "$BASE_BRANCH" \
+            --head "$HEAD_BRANCH" \
+            --state open \
+            --json number \
+            --jq '.[0].number')"
+
+          if [ -n "$existing_pr_number" ]; then
+            gh pr edit "$existing_pr_number" \
+              --repo "$GITOPS_REPO" \
+              --title "Promote dev to $HEAD_SHA" \
+              --body "Automated GitOps promotion for source commit \`$HEAD_SHA\`."
+            echo "Updated existing PR #$existing_pr_number"
+            exit 0
+          fi
+
+          gh pr create \
+            --repo "$GITOPS_REPO" \
+            --base "$BASE_BRANCH" \
+            --head "$HEAD_BRANCH" \
+            --title "Promote dev to $HEAD_SHA" \
+            --body "Automated GitOps promotion for source commit \`$HEAD_SHA\`."

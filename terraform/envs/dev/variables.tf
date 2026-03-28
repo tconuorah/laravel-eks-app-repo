@@ -10,7 +10,7 @@ variable "ecr_repositories" {
 variable "github_repository" {
   description = "GitHub repository allowed to assume the ECR push role, in owner/repo format"
   type        = string
-  default     = "tconuorah/laravel-eks-deploy-gitops"
+  default     = "tconuorah/laravel-eks-app-repo"
 }
 
 variable "github_allowed_refs" {
