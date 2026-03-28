@@ -3,7 +3,7 @@ name: promote-gitops-dev
 on:
   workflow_run:
     workflows:
-      - ci
+      - ci-nginx-php
     types:
       - completed
 
