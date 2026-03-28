@@ -244,6 +244,38 @@ You can also use any tag you want:
 TAG=1.0.1 ./scripts/push-ecr-images.sh
 ```
 
+## Argo CD and GitOps
+
+The Terraform `dev` environment now provisions:
+
+- Argo CD in the `argocd` namespace
+- External Secrets Operator in the `external-secrets` namespace
+- an AWS Secrets Manager secret for Laravel runtime environment values
+- IRSA permissions so External Secrets can read that secret
+
+A separate GitOps repository scaffold is included locally at:
+
+```text
+laravel-eks-gitops-repo/
+```
+
+Push that directory to a new GitHub repository named `laravel-eks-gitops-repo`, then bootstrap Argo CD with:
+
+```bash
+kubectl apply -n argocd -f laravel-eks-gitops-repo/bootstrap/root-application.yaml
+```
+
+The workflow:
+
+- `.github/workflows/ci.yml` builds and pushes the `php` and `nginx` images to ECR using the commit SHA as an immutable tag
+- `.github/workflows/promote-gitops-dev.yml` updates `clusters/dev/app-laravel.yaml` in the GitOps repo after a successful `ci` run on `dev`
+
+The Laravel workload reads secrets from AWS Secrets Manager through:
+
+```text
+laravel-eks-gitops-repo/workloads/dev/laravel/externalsecret.yaml
+```
+
 ## GitHub Actions ECR Role
 
 Terraform now includes a reusable IAM module at:

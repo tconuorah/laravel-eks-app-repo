@@ -31,6 +31,36 @@ variable "github_oidc_provider_arn" {
   default     = null
 }
 
+variable "argocd_namespace" {
+  description = "Namespace where Argo CD is installed"
+  type        = string
+  default     = "argocd"
+}
+
+variable "external_secrets_namespace" {
+  description = "Namespace where External Secrets Operator is installed"
+  type        = string
+  default     = "external-secrets"
+}
+
+variable "external_secrets_service_account_name" {
+  description = "Service account name used by External Secrets Operator"
+  type        = string
+  default     = "external-secrets"
+}
+
+variable "laravel_namespace" {
+  description = "Namespace for the Laravel workload"
+  type        = string
+  default     = "laravel"
+}
+
+variable "laravel_hostname" {
+  description = "Public hostname for the Laravel application"
+  type        = string
+  default     = "laravel-dev.example.com"
+}
+
 variable "aws_region" {
   type    = string
   default = "us-east-2"

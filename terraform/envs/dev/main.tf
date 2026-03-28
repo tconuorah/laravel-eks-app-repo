@@ -1,11 +1,17 @@
 locals {
-  name = "${var.project_name}-${var.environment}"
+  name                        = "${var.project_name}-${var.environment}"
+  laravel_runtime_secret_name = "${local.name}/laravel/runtime"
+  laravel_app_url             = "https://${var.laravel_hostname}"
 
   tags = {
     Project     = var.project_name
     Environment = var.environment
     ManagedBy   = "Terraform"
   }
+}
+
+resource "random_id" "laravel_app_key" {
+  byte_length = 32
 }
 
 module "ecr" {
@@ -95,4 +101,61 @@ module "rds_mysql" {
   db_password        = var.db_password
   db_instance_class  = var.db_instance_class
   tags               = local.tags
+}
+
+module "laravel_runtime_secret" {
+  source = "../../modules/secrets-manager-json"
+
+  name        = local.laravel_runtime_secret_name
+  description = "Laravel runtime environment variables for ${local.name}"
+  secret_string = jsonencode({
+    APP_NAME          = "Laravel"
+    APP_ENV           = "production"
+    APP_DEBUG         = "false"
+    APP_URL           = local.laravel_app_url
+    APP_KEY           = "base64:${random_id.laravel_app_key.b64_std}"
+    DB_CONNECTION     = "mysql"
+    DB_HOST           = module.rds_mysql.db_endpoint
+    DB_PORT           = tostring(module.rds_mysql.db_port)
+    DB_DATABASE       = var.db_name
+    DB_USERNAME       = var.db_username
+    DB_PASSWORD       = var.db_password
+    MYSQL_ATTR_SSL_CA = "/etc/mysql/certs/rds-global-bundle.pem"
+  })
+  tags = local.tags
+}
+
+module "irsa_external_secrets" {
+  source = "../../modules/irsa-external-secrets"
+
+  cluster_name         = module.eks.cluster_name
+  oidc_provider_arn    = module.eks.oidc_provider_arn
+  oidc_provider_url    = module.eks.oidc_provider_url
+  namespace            = var.external_secrets_namespace
+  service_account_name = var.external_secrets_service_account_name
+  secret_arns          = [module.laravel_runtime_secret.secret_arn]
+  tags                 = local.tags
+}
+
+module "external_secrets" {
+  source = "../../modules/external-secrets"
+
+  namespace            = var.external_secrets_namespace
+  service_account_name = var.external_secrets_service_account_name
+  irsa_role_arn        = module.irsa_external_secrets.role_arn
+
+  depends_on = [
+    module.eks,
+    module.irsa_external_secrets
+  ]
+}
+
+module "argocd" {
+  source = "../../modules/argocd"
+
+  namespace = var.argocd_namespace
+
+  depends_on = [
+    module.eks
+  ]
 }

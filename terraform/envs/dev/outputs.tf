@@ -22,6 +22,26 @@ output "github_ecr_push_allowed_subjects" {
   value = module.github_ecr_push_role.allowed_subjects
 }
 
+output "laravel_runtime_secret_name" {
+  value = module.laravel_runtime_secret.secret_name
+}
+
+output "laravel_runtime_secret_arn" {
+  value = module.laravel_runtime_secret.secret_arn
+}
+
+output "external_secrets_irsa_role_arn" {
+  value = module.irsa_external_secrets.role_arn
+}
+
+output "argocd_namespace" {
+  value = module.argocd.namespace
+}
+
+output "argocd_server_service_name" {
+  value = module.argocd.server_service_name
+}
+
 output "cluster_name" {
   value = module.eks.cluster_name
 }

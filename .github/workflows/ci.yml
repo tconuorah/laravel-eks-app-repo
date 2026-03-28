@@ -111,7 +111,7 @@ jobs:
         with:
           images: ${{ steps.login-ecr.outputs.registry }}/${{ matrix.image_name == 'php' && env.PHP_IMAGE_REPOSITORY || env.NGINX_IMAGE_REPOSITORY }}
           tags: |
-            type=sha,prefix=
+            type=raw,value=${{ github.sha }}
             type=raw,value=${{ github.ref_name }}
 
       - name: Build and push ${{ matrix.image_name }} image

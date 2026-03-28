@@ -1,0 +1,53 @@
+name: promote-gitops-dev
+
+on:
+  workflow_run:
+    workflows:
+      - ci
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+jobs:
+  update-gitops:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'dev'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Check out GitOps repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.GITOPS_REPO_FULL_NAME || 'tconuorah/laravel-eks-gitops-repo' }}
+          ref: ${{ vars.GITOPS_REPO_DEFAULT_BRANCH || 'main' }}
+          token: ${{ secrets.GITOPS_REPO_TOKEN }}
+          path: gitops-repo
+
+      - name: Update Argo CD application manifest
+        run: |
+          python3 scripts/update_argocd_application.py \
+            --file gitops-repo/clusters/dev/app-laravel.yaml \
+            --revision "${{ github.event.workflow_run.head_sha }}" \
+            --nginx-tag "${{ github.event.workflow_run.head_sha }}" \
+            --php-tag "${{ github.event.workflow_run.head_sha }}"
+
+      - name: Commit and push GitOps change
+        working-directory: gitops-repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet; then
+            echo "No GitOps changes detected"
+            exit 0
+          fi
+
+          git add clusters/dev/app-laravel.yaml
+          git commit -m "Promote dev to ${{ github.event.workflow_run.head_sha }}"
+          git push origin HEAD
