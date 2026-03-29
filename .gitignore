@@ -85,3 +85,4 @@ tmp/
 laravel-helm/values.secret.yaml
 
 
+laravel-eks-gitops-repo
