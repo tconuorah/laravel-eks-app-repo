@@ -1,4 +1,4 @@
-# Platform Engineering Tech Test
+# Platform Engineering Tech
 
 ## Overview
 
