@@ -1,198 +1,130 @@
-# Laravel on EKS with Helm, ECR, ALB, and RDS
+# Laravel on EKS with Terraform, Helm, Argo CD, ECR, ALB, and RDS
 
-This repository provisions AWS infrastructure with Terraform and deploys a Laravel application to EKS with Helm.
+This repository contains everything needed to stand up AWS infrastructure for a Laravel application and deploy it to Amazon EKS.
 
-It now includes a working setup for:
+The recommended end state for this project is:
 
-- Laravel application source in `app/`
-- `nginx` and `php-fpm` Docker images
-- ECR image push workflow
-- Helm deployment via `laravel-helm/`
-- ALB ingress on EKS
-- RDS MySQL connectivity with TLS trust
-- Terraform-based AWS infrastructure
-- Secret handling through `laravel-helm/values.secret.yaml`
+1. Terraform creates the AWS and cluster infrastructure.
+2. GitHub Actions builds and pushes the `php` and `nginx` images to ECR.
+3. A separate GitOps repository stores the Argo CD manifests.
+4. Argo CD deploys the Helm chart from this repository.
+5. External Secrets pulls Laravel runtime secrets from AWS Secrets Manager.
 
-## Repository Layout
+If you need a faster smoke-test path, this repo also supports a direct Helm deployment without Argo CD.
 
-```text
-app/                 Laravel application source
-docker/nginx/        nginx image build
-docker/php/          php-fpm image build
-laravel-helm/        Helm chart
-scripts/             helper scripts
-terraform/           AWS infrastructure
-```
-
-## What We Did
-
-### 1. Fixed and completed the Helm chart
-
-We reviewed and corrected the Helm chart and added missing templates:
-
-- `templates/configmap-nginx.yaml`
-- `templates/secret.yaml`
-- `templates/pdb.yaml`
-
-We also fixed formatting and deployment wiring so the chart renders and deploys correctly.
-
-Later, the chart was renamed from `laravel` to `laravel-helm`.
-
-### 2. Replaced the placeholder app with the real Laravel app
-
-Originally the deployment served a placeholder PHP page. We updated the repo so the real Laravel app is now built from:
+## What Is In This Repo
 
 ```text
-app/
+app/                       Laravel application source
+docker/nginx/              nginx container image
+docker/php/                php-fpm container image
+laravel-helm/              Helm chart for the Laravel workload
+laravel-eks-gitops-repo/   Scaffold for the separate GitOps repository
+scripts/                   Helper scripts used by automation
+terraform/bootstrap/       One-time Terraform state bucket setup
+terraform/envs/dev/        Main AWS, EKS, Argo CD, ECR, and RDS environment
 ```
 
-We also cleaned up the repo structure by removing the old `platform-engine` directory and the earlier placeholder app folder.
+## Recommended Deployment Flow
 
-### 3. Updated Dockerfiles
+Use this order to complete the project:
 
-We updated:
-
-- `docker/php/Dockerfile`
-- `docker/nginx/Dockerfile`
-
-So that they build and serve the real Laravel application instead of the placeholder app.
-
-### 4. Added ECR push workflow
-
-We used:
-
-```bash
-./scripts/push-ecr-images.sh
-```
-
-to build and push the `nginx` and `php` images to ECR.
-
-### 5. Added secret-based values handling
-
-We created:
-
-- `laravel-helm/values.secret.yaml`
-- `laravel-helm/values.secret.yaml.example`
-
-This keeps sensitive values such as:
-
-- `APP_KEY`
-- DB host
-- DB password
-- MySQL SSL CA path
-
-out of the main Helm values file.
-
-### 6. Connected Laravel to RDS
-
-We configured the application to connect to the RDS instance through Helm secret values and verified the connection by running migrations successfully.
-
-### 7. Added proper RDS TLS trust
-
-We updated the PHP image so it includes the official Amazon RDS CA bundle and configured Laravel/MySQL to trust it using:
-
-```text
-MYSQL_ATTR_SSL_CA=/etc/mysql/certs/rds-global-bundle.pem
-```
-
-## Issues We Ran Into and How We Solved Them
-
-### Issue: `ImagePullBackOff`
-
-The app pods failed to start because the images had not been pushed to ECR yet.
-
-Fix:
-- built the images
-- pushed them to ECR
-- updated Helm to use the correct image tags
-
-### Issue: ALB ingress failed with `UnauthorizedOperation`
-
-The AWS Load Balancer Controller could not create security groups.
-
-Cause:
-- incomplete IAM policy for the ALB controller IRSA role
-
-Fix:
-- updated the ALB controller IAM policy in Terraform
-
-### Issue: ALB ingress failed with target group port errors
-
-Cause:
-- ALB was reconciling in the wrong target mode for the `ClusterIP` service
-
-Fix:
-- configured ingress to use ALB target type `ip`
-
-### Issue: App showed only a placeholder page
-
-Cause:
-- Dockerfiles were still building the temporary placeholder app
-
-Fix:
-- updated Dockerfiles to build the real Laravel app from `app/`
-
-### Issue: Laravel app returned HTTP 500
-
-Cause:
-- missing `APP_KEY`
-
-Fix:
-- generated a Laravel `APP_KEY`
-- stored it in `laravel-helm/values.secret.yaml`
-- redeployed the app
-
-### Issue: `php artisan migrate` failed with MySQL socket error
-
-Error:
-- `SQLSTATE[HY000] [2002] No such file or directory`
-
-Cause:
-- Laravel was not using the RDS hostname yet and was trying a local socket
-
-Fix:
-- added DB settings to `values.secret.yaml`
-- redeployed
-- cleared Laravel config cache
-
-### Issue: DB connection still hung
-
-Cause:
-- RDS security group allowed the wrong traffic source
-
-Fix:
-- updated Terraform so RDS allows traffic from the EKS private app subnets
-
-### Issue: MySQL CLI failed with TLS certificate verification error
-
-Error:
-- `TLS/SSL error: Certificate verification failure: The certificate is NOT trusted.`
-
-Cause:
-- the container did not trust the Amazon RDS CA
-
-Fix:
-- downloaded the official Amazon RDS global CA bundle into the PHP image
-- configured MySQL client trust
-- exposed `MYSQL_ATTR_SSL_CA` to Laravel through Helm secret values
+1. Create the Terraform backend bucket.
+2. Update the repo-specific placeholders in Terraform and GitOps manifests.
+3. Apply the `dev` Terraform environment.
+4. Connect `kubectl` to the new EKS cluster.
+5. Push `laravel-eks-gitops-repo/` to its own GitHub repository.
+6. Configure GitHub Actions permissions and variables.
+7. Bootstrap Argo CD with the GitOps repo.
+8. Push a commit to the `dev` branch so CI builds images and opens a GitOps promotion PR.
+9. Merge the GitOps PR and let Argo CD sync the application.
+10. Verify the app, ingress, secrets, and database connectivity.
 
 ## Prerequisites
 
-- AWS CLI configured for the target account
-- Docker
-- kubectl
+Install and configure these locally:
+
+- AWS CLI with credentials for the target account
+- Terraform `>= 1.6`
+- `kubectl`
 - Helm
-- Terraform
+- Docker
+- GitHub access for both the app repo and the GitOps repo
 
-## Infrastructure
+You will also need:
 
-The main Terraform environment is:
+- An AWS account
+- A public DNS name for the Laravel application
+- A GitHub repository for this app source
+- A second GitHub repository for the GitOps manifests
 
-```bash
-terraform/envs/dev
+## Step 1: Bootstrap the Terraform Backend
+
+The main environment at `terraform/envs/dev` uses an S3 backend, so create that bucket first.
+
+Create `terraform/bootstrap/terraform.tfvars` with values similar to:
+
+```hcl
+aws_region               = "us-east-2"
+project_name             = "php-nginx-app"
+environment              = "bootstrap"
+state_bucket_name        = "your-unique-terraform-state-bucket"
+state_bucket_force_destroy = true
 ```
 
-To create or update infrastructure:
+Apply the bootstrap stack:
+
+```bash
+cd terraform/bootstrap
+terraform init
+terraform apply
+```
+
+After that, update `terraform/envs/dev/backend.tf` so `bucket`, `key`, and `region` match your backend settings.
+
+## Step 2: Replace the Project Placeholders
+
+Before applying the main stack, update the placeholders that still point to example repos, branches, hosts, and regions.
+
+### Required Terraform values
+
+Create `terraform/envs/dev/terraform.tfvars` and override the defaults you actually plan to use. At minimum, review:
+
+```hcl
+aws_region         = "us-east-2"
+project_name       = "php-nginx-app"
+environment        = "dev"
+laravel_hostname   = "laravel-dev.example.com"
+github_repository  = "your-org/your-app-repo"
+github_allowed_refs = ["refs/heads/dev"]
+db_password        = "replace-me"
+```
+
+Also review the VPC, subnet, node group, and database defaults in `terraform/envs/dev/variables.tf` and adjust them if they do not fit your AWS account or networking plan.
+
+### Required GitOps manifest updates
+
+Update these files before you push `laravel-eks-gitops-repo/` to its own repository:
+
+- `laravel-eks-gitops-repo/bootstrap/root-application.yaml`
+- `laravel-eks-gitops-repo/clusters/dev/project-laravel.yaml`
+- `laravel-eks-gitops-repo/clusters/dev/app-laravel.yaml`
+- `laravel-eks-gitops-repo/clusters/dev/app-laravel-secret.yaml`
+- `laravel-eks-gitops-repo/clusters/dev/app-external-secrets-store.yaml`
+
+Check and replace:
+
+- the app source repo URL
+- the GitOps repo URL
+- the branch name if you are not using `main`
+- the hostname `laravel-dev.example.com`
+- the AWS region if you are not using `us-east-2`
+
+If the GitOps repo will stay private, keep `laravel-eks-gitops-repo/bootstrap/private-repo-credentials-secret.example.yaml` handy for Argo CD repository credentials.
+
+## Step 3: Apply the Main Infrastructure
+
+Provision ECR, VPC, EKS, ALB controller, RDS, External Secrets, Argo CD, and the Laravel runtime secret:
 
 ```bash
 cd terraform/envs/dev
@@ -207,202 +139,276 @@ Useful outputs:
 terraform output -raw cluster_name
 terraform output -raw cluster_endpoint
 terraform output -raw rds_endpoint
+terraform output -raw laravel_runtime_secret_name
+terraform output -raw github_ecr_push_role_arn
 ```
 
-## Secrets
+What Terraform creates for you:
 
-Use the local secret values file:
-
-```text
-laravel-helm/values.secret.yaml
-```
-
-Example:
-
-```yaml
-app:
-  key: "base64:replace-with-laravel-app-key"
-  dbHost: "your-rds-endpoint.us-east-2.rds.amazonaws.com"
-  dbPort: "3306"
-  dbName: "laravel"
-  dbUser: "root"
-  dbPassword: "replace-with-db-password"
-  mysqlAttrSslCa: "/etc/mysql/certs/rds-global-bundle.pem"
-```
-
-## Build and Push Images
-
-Build and push both images to ECR:
-
-```bash
-TAG=20260314-ssl1 ./scripts/push-ecr-images.sh
-```
-
-You can also use any tag you want:
-
-```bash
-TAG=1.0.1 ./scripts/push-ecr-images.sh
-```
-
-## Argo CD and GitOps
-
-The Terraform `dev` environment now provisions:
-
+- ECR repositories for `php` and `nginx`
+- An EKS cluster and node group
+- The AWS Load Balancer Controller
+- An RDS MySQL instance
+- An AWS Secrets Manager secret for Laravel runtime variables
+- IRSA for External Secrets
 - Argo CD in the `argocd` namespace
-- External Secrets Operator in the `external-secrets` namespace
-- an AWS Secrets Manager secret for Laravel runtime environment values
-- IRSA permissions so External Secrets can read that secret
 
-A separate GitOps repository scaffold is included locally at:
+The Laravel runtime secret is populated by Terraform with values such as `APP_KEY`, `DB_HOST`, `DB_DATABASE`, and `MYSQL_ATTR_SSL_CA`.
 
-```text
-laravel-eks-gitops-repo/
-```
+## Step 4: Connect to the Cluster
 
-Push that directory to a new GitHub repository named `laravel-eks-gitops-repo`, then bootstrap Argo CD with:
+Configure local Kubernetes access:
 
 ```bash
-kubectl apply -n argocd -f laravel-eks-gitops-repo/bootstrap/root-application.yaml
+aws eks update-kubeconfig \
+  --region <your-aws-region> \
+  --name "$(cd terraform/envs/dev && terraform output -raw cluster_name)"
 ```
 
-The workflow:
+Verify cluster access:
 
-- `.github/workflows/ci.yml` builds and pushes the `php` and `nginx` images to ECR using the first 12 characters of the git commit SHA as an immutable tag
-- `.github/workflows/promote-gitops-dev.yml` updates `clusters/dev/app-laravel.yaml` in a GitOps repo branch and opens a PR after a successful `ci` run on `dev`
-
-For GitOps promotion with a GitHub App, create and install a GitHub App on `laravel-eks-gitops-repo`, then set these GitHub Actions settings in this source repo:
-
-- Variable: `GITOPS_APP_ID`
-- Variable: `GITOPS_REPO_FULL_NAME` (example: `tconuorah/laravel-eks-gitops-repo`)
-- Variable: `GITOPS_REPO_DEFAULT_BRANCH` (optional, defaults to `main`)
-- Secret: `GITOPS_APP_PRIVATE_KEY`
-
-The GitHub App should have:
-
-- Repository permissions: `Contents` = `Read and write`
-- Repository permissions: `Pull requests` = `Read and write`
-- Installation target: the `laravel-eks-gitops-repo` repository
-
-The Laravel workload reads secrets from AWS Secrets Manager through:
-
-```text
-laravel-eks-gitops-repo/workloads/dev/laravel/externalsecret.yaml
+```bash
+kubectl get nodes
+kubectl get ns
+kubectl get pods -n argocd
+kubectl get pods -n external-secrets
 ```
 
-## GitHub Actions ECR Role
+## Step 5: Create the GitOps Repository
 
-Terraform now includes a reusable IAM module at:
+The directory `laravel-eks-gitops-repo/` is a scaffold, not the live GitOps remote yet.
 
-```text
-terraform/modules/iam-github-ecr-push
+Create a new GitHub repository and push that directory into it:
+
+```bash
+cd laravel-eks-gitops-repo
+git init
+git remote add origin git@github.com:your-org/laravel-eks-gitops-repo.git
+git checkout -b main
+git add .
+git commit -m "Initial GitOps bootstrap"
+git push -u origin main
 ```
 
-The `dev` environment creates a GitHub OIDC role that can push to every ECR repository created by `var.ecr_repositories`.
+The GitOps repo should contain:
 
-Apply Terraform and copy the role ARN:
+- the root Argo CD bootstrap application
+- the `AppProject`
+- the Laravel application definition
+- the External Secret definition
+- the External Secrets `ClusterSecretStore`
+
+## Step 6: Configure GitHub Actions
+
+This repo already includes these workflows:
+
+- `.github/workflows/ci.yml`
+- `.github/workflows/promote-gitops-dev.yml`
+
+The `ci.yml` workflow:
+
+- runs Laravel checks
+- builds the `php` and `nginx` images
+- pushes both images to ECR
+- tags both images with the first 12 characters of the source commit SHA
+
+The `promote-gitops-dev.yml` workflow:
+
+- runs after successful CI on the `dev` branch
+- updates `clusters/dev/app-laravel.yaml` in the GitOps repo
+- opens or updates a PR in the GitOps repo
+
+### Required GitHub variables for this source repo
+
+Set these in your GitHub repository settings:
+
+- `AWS_GITHUB_ACTIONS_ROLE_ARN`
+- `AWS_REGION`
+- `ECR_PHP_REPOSITORY`
+- `ECR_NGINX_REPOSITORY`
+- `GITOPS_APP_ID`
+- `GITOPS_REPO_FULL_NAME`
+- `GITOPS_REPO_DEFAULT_BRANCH`
+
+### Required GitHub secret for this source repo
+
+Set:
+
+- `GITOPS_APP_PRIVATE_KEY`
+
+### GitHub App requirements for the GitOps repo
+
+Create and install a GitHub App that can write to the GitOps repository. It needs:
+
+- `Contents: Read and write`
+- `Pull requests: Read and write`
+
+### AWS role used by CI
+
+Terraform outputs the OIDC-backed ECR push role ARN:
 
 ```bash
 cd terraform/envs/dev
 terraform output -raw github_ecr_push_role_arn
 ```
 
-Set these GitHub repository variables before using the workflow:
+That role trusts the repository defined by `github_repository` and the refs defined by `github_allowed_refs`.
 
-- `AWS_GITHUB_ACTIONS_ROLE_ARN`
-- `AWS_REGION` (optional, defaults to `us-east-2`)
-- `ECR_PHP_REPOSITORY` (optional, defaults to `php`)
-- `ECR_NGINX_REPOSITORY` (optional, defaults to `nginx`)
+## Step 7: Bootstrap Argo CD
 
-By default the role trusts the `tconuorah/laravel-eks-app-repo` repository on `refs/heads/dev`. Update `github_repository` or `github_allowed_refs` in `terraform/envs/dev/variables.tf` if your repo or branch changes.
-
-If your AWS account already has the GitHub OIDC provider, set:
-
-- `create_github_oidc_provider = false`
-- `github_oidc_provider_arn = "arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com"`
-
-## Deploy with Helm
-
-Deploy or upgrade the application:
+If your GitOps repo is private, create the Argo CD repo credentials first:
 
 ```bash
-helm upgrade --install laravel ./laravel-helm -n laravel \
-  --create-namespace \
-  -f laravel-helm/values.secret.yaml \
-  --set image.nginx.tag=20260314-ssl1 \
-  --set image.php.tag=20260314-ssl1
+kubectl apply -n argocd \
+  -f laravel-eks-gitops-repo/bootstrap/private-repo-credentials-secret.example.yaml
 ```
 
-Check rollout:
+Then bootstrap Argo CD with the root application:
 
 ```bash
-kubectl rollout status deployment/laravel -n laravel
+kubectl apply -n argocd \
+  -f laravel-eks-gitops-repo/bootstrap/root-application.yaml
+```
+
+Check that Argo CD starts reconciling the child applications:
+
+```bash
+kubectl get applications -n argocd
+kubectl get externalsecret -n laravel
+kubectl get secret -n laravel
+```
+
+Expected result:
+
+- Argo CD creates the `laravel` namespace
+- External Secrets creates the `laravel-env` secret from AWS Secrets Manager
+- the Laravel application becomes ready once a valid image tag exists in ECR
+
+## Step 8: Trigger the First Build and Promotion
+
+The application manifest in the GitOps repo contains a pinned commit SHA and image tags. Those are meant to be updated by the promotion workflow.
+
+Push a commit to the `dev` branch of the app source repository:
+
+```bash
+git checkout dev
+git add .
+git commit -m "Trigger first deployment"
+git push origin dev
+```
+
+Then watch the automation:
+
+1. `ci-nginx-php` runs in the app repo.
+2. The workflow pushes `php` and `nginx` images to ECR.
+3. `promote-gitops-dev` opens a PR against the GitOps repo.
+4. You review and merge that PR.
+5. Argo CD syncs the new revision and image tags into the cluster.
+
+## Step 9: Verify the Deployment
+
+Check the workload:
+
+```bash
 kubectl get pods -n laravel
+kubectl get svc -n laravel
 kubectl get ingress -n laravel
+kubectl rollout status deployment/laravel -n laravel
 ```
 
-## Database Commands
-
-Clear Laravel caches after DB config changes:
+Inspect logs if needed:
 
 ```bash
-kubectl exec -n laravel deploy/laravel -c php -- php artisan optimize:clear
+kubectl logs -n laravel deployment/laravel -c php
+kubectl logs -n laravel deployment/laravel -c nginx
 ```
 
-Run migrations:
-
-```bash
-kubectl exec -n laravel deploy/laravel -c php -- php artisan migrate --force
-```
-
-Check migration status:
+Verify the database connection:
 
 ```bash
 kubectl exec -n laravel deploy/laravel -c php -- php artisan migrate:status
 ```
 
-List database tables from inside the container:
+If you need to run migrations manually:
 
 ```bash
-kubectl exec -n laravel deploy/laravel -c php -- sh -lc 'mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USERNAME" -p"$DB_PASSWORD" "$DB_DATABASE" -e "show tables;"'
+kubectl exec -n laravel deploy/laravel -c php -- php artisan migrate --force
 ```
 
-## RDS TLS
-
-The PHP image includes the official Amazon RDS global CA bundle at:
-
-```text
-/etc/mysql/certs/rds-global-bundle.pem
-```
-
-Laravel uses:
-
-```text
-MYSQL_ATTR_SSL_CA=/etc/mysql/certs/rds-global-bundle.pem
-```
-
-This allows both Laravel and the MySQL client to connect to RDS with trusted TLS.
-
-Official AWS references:
-
-- https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html
-- https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
-
-## Troubleshooting
-
-### `ImagePullBackOff`
-
-Usually means the image tag has not been pushed to ECR yet.
-
-Fix:
+If config values changed, clear the Laravel caches:
 
 ```bash
-TAG=<tag> ./scripts/push-ecr-images.sh
-helm upgrade --install laravel ./laravel-helm -n laravel -f laravel-helm/values.secret.yaml \
+kubectl exec -n laravel deploy/laravel -c php -- php artisan optimize:clear
+```
+
+## Optional: Direct Helm Deployment Instead of GitOps
+
+Use this only if you want a manual deployment path or a quick smoke test and Argo CD is not already managing the same release.
+
+Copy the example secret values file:
+
+```bash
+cp laravel-helm/values.secret.yaml.example laravel-helm/values.secret.yaml
+```
+
+Fill in the real values in `laravel-helm/values.secret.yaml`, especially:
+
+- `app.key`
+- `app.dbHost`
+- `app.dbPassword`
+- `app.mysqlAttrSslCa`
+
+Deploy with Helm:
+
+```bash
+helm upgrade --install laravel ./laravel-helm \
+  -n laravel \
+  --create-namespace \
+  -f laravel-helm/values.secret.yaml
+```
+
+If you want to override image tags manually:
+
+```bash
+helm upgrade --install laravel ./laravel-helm \
+  -n laravel \
+  --create-namespace \
+  -f laravel-helm/values.secret.yaml \
   --set image.nginx.tag=<tag> \
   --set image.php.tag=<tag>
 ```
 
-### ALB ingress has no address
+Important:
+
+- This path uses the Kubernetes secret rendered by `laravel-helm/templates/secret.yaml`.
+- The recommended GitOps path does not need `laravel-helm/values.secret.yaml` because it reads runtime configuration from AWS Secrets Manager through External Secrets.
+
+## Troubleshooting
+
+### CI cannot push images to ECR
+
+Check:
+
+- the `AWS_GITHUB_ACTIONS_ROLE_ARN` variable
+- the value of `github_repository` in `terraform/envs/dev/terraform.tfvars`
+- the value of `github_allowed_refs`
+
+### Argo CD syncs, but the Laravel pods do not start
+
+Check:
+
+```bash
+kubectl describe pods -n laravel
+kubectl get secret -n laravel laravel-env -o yaml
+```
+
+Common causes:
+
+- the `ExternalSecret` has not synced yet
+- the image tag in the GitOps repo does not exist in ECR
+- the hostname or ingress values are still placeholders
+
+### Ingress does not receive an address
 
 Check:
 
@@ -413,50 +419,51 @@ kubectl logs -n kube-system deployment/aws-load-balancer-controller
 
 Common causes:
 
-- missing IAM permissions for the ALB controller
-- wrong ingress target type
+- missing ALB controller permissions
+- ALB annotations or hostnames still set to placeholder values
 
-### Laravel returns HTTP 500
+### Database connectivity fails
 
-Check logs:
-
-```bash
-kubectl logs -n laravel deployment/laravel -c php
-kubectl logs -n laravel deployment/laravel -c nginx
-```
-
-Common causes:
-
-- missing `APP_KEY`
-- wrong DB values
-- stale Laravel config cache
-
-### DB connection problems
-
-Check environment variables inside the pod:
+Check the runtime environment inside the pod:
 
 ```bash
 kubectl exec -n laravel deploy/laravel -c php -- printenv | grep '^DB_'
+kubectl exec -n laravel deploy/laravel -c php -- printenv | grep '^MYSQL_ATTR_SSL_CA'
 ```
 
-Test connectivity:
+The PHP image already includes the Amazon RDS CA bundle at:
+
+```text
+/etc/mysql/certs/rds-global-bundle.pem
+```
+
+## Completion Checklist
+
+The project is effectively complete when all of these are true:
+
+- Terraform bootstrap has created the remote state bucket.
+- `terraform/envs/dev` applies successfully.
+- `kubectl` can reach the EKS cluster.
+- The GitOps repo exists and the manifest URLs point to your real repositories.
+- GitHub Actions can push both images to ECR.
+- The promotion workflow opens a PR against the GitOps repo.
+- Argo CD syncs the Laravel application.
+- `laravel-env` is created from AWS Secrets Manager.
+- The ingress receives an address.
+- Laravel can connect to RDS and run migrations.
+
+## Cleanup
+
+If Argo CD is managing the application, remove or disable the GitOps application manifests first so Argo CD does not recreate the release.
+
+Then remove the application:
 
 ```bash
-kubectl exec -n laravel deploy/laravel -c php -- sh -lc 'mysqladmin ping -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USERNAME" -p"$DB_PASSWORD"'
+helm uninstall laravel -n laravel || true
+kubectl delete namespace laravel --wait=true || true
 ```
 
-If Laravel migrations work but the MySQL CLI fails with TLS trust errors, rebuild and redeploy the updated PHP image.
-
-## Destroying Infrastructure
-
-Remove the app first so the ALB can clean up gracefully:
-
-```bash
-helm uninstall laravel -n laravel
-kubectl delete namespace laravel --wait=true
-```
-
-Then destroy the main infrastructure:
+Then destroy the main environment:
 
 ```bash
 cd terraform/envs/dev
@@ -464,12 +471,10 @@ terraform init
 terraform destroy
 ```
 
-If you also want to remove the Terraform backend infrastructure, do that last:
+Destroy the bootstrap backend last, only if you no longer need the Terraform state bucket:
 
 ```bash
 cd terraform/bootstrap
 terraform init
 terraform destroy
 ```
-
-Only destroy `terraform/bootstrap` if you want to remove the backend state infrastructure too.
