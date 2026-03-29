@@ -80,6 +80,7 @@ jobs:
             exit 0
           fi
 
+          git fetch origin "$PROMOTION_BRANCH":"refs/remotes/origin/$PROMOTION_BRANCH" || true
           git checkout -B "$PROMOTION_BRANCH"
           git add clusters/dev/app-laravel.yaml
           git commit -m "Promote dev to ${{ github.event.workflow_run.head_sha }}"
