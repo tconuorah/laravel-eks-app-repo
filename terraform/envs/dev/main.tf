@@ -146,7 +146,8 @@ module "external_secrets" {
 
   depends_on = [
     module.eks,
-    module.irsa_external_secrets
+    module.irsa_external_secrets,
+    module.alb_controller
   ]
 }
 
@@ -156,6 +157,7 @@ module "argocd" {
   namespace = var.argocd_namespace
 
   depends_on = [
-    module.eks
+    module.eks,
+    module.alb_controller
   ]
 }
