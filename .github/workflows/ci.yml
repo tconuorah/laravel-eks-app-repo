@@ -94,7 +94,7 @@ jobs:
 
       - name: Derive image tag from git commit
         id: image-tag
-        run: echo "value=$(git rev-parse --short=4 HEAD)" >> "$GITHUB_OUTPUT"
+        run: echo "value=${GITHUB_SHA::4}" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4

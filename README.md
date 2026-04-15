@@ -210,7 +210,7 @@ The `ci.yml` workflow:
 - runs Laravel checks
 - builds the `php` and `nginx` images
 - pushes both images to ECR
-- tags both images with the first 12 characters of the source commit SHA
+- tags both images with the first 4 characters of the source commit SHA
 
 The `promote-gitops-dev.yml` workflow:
 

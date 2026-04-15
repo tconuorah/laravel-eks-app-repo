@@ -23,7 +23,7 @@ jobs:
 
       - name: Derive image tag from triggering commit
         id: image-tag
-        run: echo "value=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+        run: echo "value=${GITHUB_SHA::4}" >> "$GITHUB_OUTPUT"
         env:
           GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
 
